@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 const steps = ["Country", "Industry", "Employees", "Facilities", "Products"];
 
@@ -45,18 +46,17 @@ const options = {
   ],
 };
 
-// Option row component
 function OptionRow({ label, active, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={`w-full flex items-center gap-3 p-3 rounded-lg transition
-      ${
-        active
-          ? "bg-green-500 text-black"
-          : "bg-white/10 text-gray-200 hover:bg-white/20"
-      }`}
+    ${
+      active
+        ? "bg-green-500 text-black"
+        : "bg-white/10 text-gray-200 hover:bg-white/20"
+    }`}
     >
       <div
         className={`h-4 w-4 rounded-full border-2 ${
@@ -68,12 +68,14 @@ function OptionRow({ label, active, onClick }) {
   );
 }
 
-export default function CollectInfo({ onComplete }) {
+export default function CollectInfo() {
   const [step, setStep] = useState(0);
   const [shake, setShake] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const containerRef = useRef(null);
+  const navigate = useNavigate();
 
   const [answers, setAnswers] = useState({
     country: "",
@@ -86,7 +88,6 @@ export default function CollectInfo({ onComplete }) {
     sells: "",
   });
 
-  // Auto-scroll to top when step changes
   useEffect(() => {
     if (containerRef.current) {
       containerRef.current.scrollIntoView({ behavior: "smooth" });
@@ -99,7 +100,6 @@ export default function CollectInfo({ onComplete }) {
     const needs =
       value.toLowerCase().includes("other") ||
       value.toLowerCase().includes("specify");
-
     if (!needs) updated[key + "_other"] = "";
     setAnswers(updated);
   };
@@ -108,7 +108,6 @@ export default function CollectInfo({ onComplete }) {
     setAnswers({ ...answers, [key + "_other"]: value });
   };
 
-  // VALIDATION
   const isStepValid = () => {
     switch (step) {
       case 0: {
@@ -156,8 +155,10 @@ export default function CollectInfo({ onComplete }) {
     if (step > 0) setStep((s) => s - 1);
   };
 
-  const finalize = () => {
+  // ----------- FINALIZE & SEND TO BACKEND ------------
+  const finalize = async () => {
     if (!isStepValid()) return triggerShake();
+    setLoading(true);
 
     const getVal = (key) => {
       const main = answers[key];
@@ -168,24 +169,37 @@ export default function CollectInfo({ onComplete }) {
       return needs && extra.trim() ? extra.trim() : main;
     };
 
-    const result = {
-      company_profile: {
-        country: getVal("country"),
-        industry: getVal("industry"),
-        employees: answers.employees,
-        physical_facilities: getVal("facilities"),
-        sells: answers.sells,
-      },
+    const company_profile = {
+      country: getVal("country"),
+      industry: getVal("industry"),
+      employees: answers.employees,
+      physical_facilities: getVal("facilities"),
+      sells: answers.sells,
     };
 
-    console.log("FINAL →", result);
-    if (onComplete) onComplete(result);
-    alert("Profile captured! Check console for output.");
+    try {
+      const url = `${import.meta.env.VITE_BACKEND_URL}/session/start`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ company_profile }),
+      });
+
+      if (!res.ok) throw new Error("Failed to create session");
+
+      const data = await res.json();
+      const session_id = data.session_id;
+
+      navigate(`/chat?session_id=${session_id}`);
+    } catch (err) {
+      console.error("Error:", err);
+      setLoading(false);
+      alert("Something went wrong. Please try again.");
+    }
   };
 
-  // Slide animation class for step changes
-  const transitionClass =
-    "transition-all duration-500 ease-out transform";
+  const transitionClass = "transition-all duration-500 ease-out transform";
 
   const renderStep = () => {
     switch (step) {
@@ -193,7 +207,6 @@ export default function CollectInfo({ onComplete }) {
         return (
           <div className={`${transitionClass}`}>
             <h2 className="text-xl font-semibold mb-4">Country of Operation</h2>
-
             <div className="grid md:grid-cols-2 gap-3">
               {options.country.map((opt) => (
                 <OptionRow
@@ -204,7 +217,6 @@ export default function CollectInfo({ onComplete }) {
                 />
               ))}
             </div>
-
             {(answers.country.includes("specify") ||
               answers.country.toLowerCase().includes("other")) && (
               <input
@@ -221,7 +233,6 @@ export default function CollectInfo({ onComplete }) {
         return (
           <div className={`${transitionClass}`}>
             <h2 className="text-xl font-semibold mb-4">Industry / Sector</h2>
-
             <div className="grid md:grid-cols-2 gap-3 max-h-72 overflow-y-auto">
               {options.industry.map((opt) => (
                 <OptionRow
@@ -232,7 +243,6 @@ export default function CollectInfo({ onComplete }) {
                 />
               ))}
             </div>
-
             {answers.industry.toLowerCase().includes("other") && (
               <input
                 className="w-full mt-3 p-3 bg-white/10 rounded outline-none"
@@ -311,12 +321,39 @@ export default function CollectInfo({ onComplete }) {
   return (
     <div
       ref={containerRef}
-      className="min-h-screen bg-black text-white flex justify-center p-6"
+      className="min-h-screen bg-black text-white flex justify-center p-6 relative"
     >
+      {/* LOADING OVERLAY */}
+      {loading && (
+        <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center z-50">
+          <svg
+            className="animate-spin h-12 w-12 text-green-400 mb-4"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-30"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-90"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+            ></path>
+          </svg>
+          <p className="text-green-300">Creating your session...</p>
+        </div>
+      )}
+
       <div
         className={`w-full max-w-2xl bg-black/80 border border-white/10 rounded-xl p-8 space-y-10 ${
           shake ? "animate-shake" : ""
-        }`}
+        } ${loading ? "opacity-50 pointer-events-none" : ""}`}
       >
         {/* HEADER */}
         <div className="flex flex-col items-start">
@@ -338,13 +375,13 @@ export default function CollectInfo({ onComplete }) {
               <div key={i} className="flex items-center w-full">
                 <div
                   className={`h-5 w-5 rounded-full border-2 flex-shrink-0
-                    ${
-                      i === step
-                        ? "bg-green-400 border-green-400"
-                        : i < step
-                        ? "bg-green-700 border-green-700"
-                        : "border-gray-600"
-                    }`}
+                  ${
+                    i === step
+                      ? "bg-green-400 border-green-400"
+                      : i < step
+                      ? "bg-green-700 border-green-700"
+                      : "border-gray-600"
+                  }`}
                 ></div>
 
                 {i !== steps.length - 1 && (
@@ -360,7 +397,7 @@ export default function CollectInfo({ onComplete }) {
         {/* STEP CONTENT */}
         {renderStep()}
 
-        {/* INLINE WARNING */}
+        {/* WARNING */}
         {showWarning && (
           <p className="text-red-400 text-sm mt-2">
             ⚠ Please select an option to continue.
@@ -372,7 +409,7 @@ export default function CollectInfo({ onComplete }) {
           <button
             type="button"
             onClick={back}
-            disabled={step === 0}
+            disabled={step === 0 || loading}
             className={`px-4 py-2 rounded 
             ${
               step === 0
@@ -387,8 +424,8 @@ export default function CollectInfo({ onComplete }) {
             <button
               type="button"
               onClick={next}
-              className={`px-4 py-2 rounded font-semibold 
-              bg-green-400 text-black hover:bg-green-300`}
+              disabled={loading}
+              className="px-4 py-2 rounded font-semibold bg-green-400 text-black hover:bg-green-300"
             >
               Next
             </button>
@@ -396,8 +433,8 @@ export default function CollectInfo({ onComplete }) {
             <button
               type="button"
               onClick={finalize}
-              className={`px-4 py-2 rounded font-semibold 
-              bg-green-400 text-black hover:bg-green-300`}
+              disabled={loading}
+              className="px-4 py-2 rounded font-semibold bg-green-400 text-black hover:bg-green-300"
             >
               Finish
             </button>
@@ -405,7 +442,7 @@ export default function CollectInfo({ onComplete }) {
         </div>
       </div>
 
-      {/* Shake animation CSS */}
+      {/* Shake animation */}
       <style>{`
         @keyframes shake {
           0% { transform: translateX(0); }
@@ -416,6 +453,12 @@ export default function CollectInfo({ onComplete }) {
         }
         .animate-shake {
           animation: shake 0.4s ease;
+        }
+
+        @keyframes pulse-slow {
+          0% { transform: scale(0.95); opacity: 0.4; }
+          50% { transform: scale(1); opacity: 0.7; }
+          100% { transform: scale(0.95); opacity: 0.4; }
         }
       `}</style>
     </div>
