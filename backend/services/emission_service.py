@@ -7,55 +7,30 @@ from services.llm_service import ask_model
 
 
 async def generate_emissions(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Prompt 3A:
-    - Reads summary + structured fields
-    - Builds the emissions prompt
-    - Calls the LLM
-    - Saves output in emissions_snapshots
-    - Updates existing snapshot if rerun with correction_note
-    """
-
     session_id = data["session_id"]
     category = data["category"]
     correction_note = data.get("correction_note", None)
 
     db = await get_conn()
 
-    # ----------------------------------------
-    # 1. Fetch summary_text from sessions table
-    # ----------------------------------------
-    session_row = await db.fetchrow("""
-        SELECT summary_text
-        FROM sessions
-        WHERE session_id = $1
-    """, session_id)
-
+    # 1. Fetch summary + company profile
+    session_row = await db.fetchrow("SELECT summary_text, company_profile FROM sessions WHERE session_id = $1", session_id)
     if not session_row:
         raise ValueError("Invalid session_id")
 
     summary = session_row["summary_text"] or ""
+    company_profile = session_row["company_profile"]
 
-    profile_row = await db.fetchrow("""
-    SELECT company_profile
-    FROM sessions
-    WHERE session_id = $1
-    """, session_id)
-
-    company_profile = profile_row["company_profile"] if profile_row else {}
-
-    # -------------------------------------------------------
-    # 2. Fetch structured fields for this category (3A inputs)
-    # -------------------------------------------------------
+    # 2. Fetch structured fields
     field_rows = await db.fetch("""
-        SELECT entity_id, field_name, field_value_text, field_value_float
+        SELECT id, entity_id, field_name, field_value_text, field_value_float
         FROM structured_fields
         WHERE session_id = $1 AND category = $2
-        ORDER BY id ASC
     """, session_id, category)
 
     structured_fields = [
         {
+            "id": r["id"],
             "entity_id": r["entity_id"],
             "field_name": r["field_name"],
             "field_value_text": r["field_value_text"],
@@ -64,79 +39,55 @@ async def generate_emissions(data: Dict[str, Any]) -> Dict[str, Any]:
         for r in field_rows
     ]
 
-    # --------------------------
-    # 3. Prepare Prompt 3A input
-    # --------------------------
-    prompt_data = {
+    # 3. Build prompt
+    prompt = build_prompt3A({
         "summary": summary,
         "category": category,
         "structured_fields": structured_fields,
         "correction_note": correction_note,
         "company_profile": company_profile
-    }
+    })
 
-    prompt = build_prompt3A(prompt_data)
-
-    # --------------------------
-    # 4. Call LLM (Prompt 3A)
-    # --------------------------
+    # 4. Ask LLM
     llm_output = await ask_model(prompt)
 
     scope = llm_output.get("scope", "").strip()
-    raw_emissions = float(llm_output.get("raw_emissions", 0.0))
-    raw_calculation_steps = llm_output.get("raw_calculation_steps", "")
+    raw_emissions = llm_output.get("raw_emissions", None)
+    raw_steps = llm_output.get("raw_calculation_steps", "")
+    entity_emissions = llm_output.get("entity_emissions", [])
 
-    # ----------------------------------------------------------
-    # 5. Insert OR Update emissions_snapshots (corrections logic)
-    # ----------------------------------------------------------
-
-    # Check if a snapshot already exists for this category
+    # 5. Insert or update emissions snapshot
     existing = await db.fetchrow("""
-        SELECT id
-        FROM emissions_snapshots
+        SELECT id FROM emissions_snapshots
         WHERE session_id = $1 AND category = $2
-        ORDER BY created_at DESC
-        LIMIT 1
     """, session_id, category)
 
     if existing:
-        # ---- UPDATE existing snapshot ----
         await db.execute("""
             UPDATE emissions_snapshots
-            SET scope = $1,
-                raw_emissions = $2,
-                steps = $3
+            SET scope = $1, raw_emissions = $2, steps = $3
             WHERE id = $4
-        """,
-            scope,
-            raw_emissions,
-            raw_calculation_steps,
-            existing["id"]
-        )
+        """, scope, raw_emissions, raw_steps, existing["id"])
     else:
-        # ---- INSERT new snapshot ----
         await db.execute("""
-            INSERT INTO emissions_snapshots (
-                session_id,
-                category,
-                scope,
-                raw_emissions,
-                steps
-            )
+            INSERT INTO emissions_snapshots (session_id, category, scope, raw_emissions, steps)
             VALUES ($1, $2, $3, $4, $5)
-        """,
-            session_id,
-            category,
-            scope,
-            raw_emissions,
-            raw_calculation_steps
-        )
+        """, session_id, category, scope, raw_emissions, raw_steps)
 
-    # -------------------
-    # 6. Return result
-    # -------------------
+    # 6. Update entity_emission for each structured field
+    for row in entity_emissions:
+        eid = row["entity_id"]
+        emission_val = row["emission_tonnes"]
+
+        await db.execute("""
+            UPDATE structured_fields
+            SET entity_emission = $1
+            WHERE session_id = $2 AND category = $3 AND entity_id = $4
+        """, emission_val, session_id, category, eid)
+
     return {
         "scope": scope,
         "raw_emissions": raw_emissions,
-        "raw_calculation_steps": raw_calculation_steps
+        "raw_calculation_steps": raw_steps,
+        "entity_emissions": entity_emissions
     }
