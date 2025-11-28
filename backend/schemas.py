@@ -28,3 +28,23 @@ class ChatLLMResponse(BaseModel):
     analysis_complete: bool
     updated_missing_field: Optional[List[Dict[str, Any]]]
     extracted_fields: Optional[List[Dict[str, Any]]]
+
+# --- SUMMARY MODELS ---
+class SummaryRequest(BaseModel):
+    session_id: str
+    category: str
+
+class SummaryResponse(BaseModel):
+    updated_summary: str
+
+
+# --- EMISSIONS MODELS (Prompt 3A) ---
+class EmissionsRequest(BaseModel):
+    session_id: str
+    category: str
+    correction_note: Optional[str] = None
+
+class EmissionsResponse(BaseModel):
+    scope: str
+    raw_emissions: float
+    raw_calculation_steps: str
