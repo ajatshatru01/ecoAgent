@@ -27,6 +27,13 @@ def build_prompt1(data: dict) -> str:
         4) Follow all rules exactly and output only valid JSON as specified.
     </goal>
 
+    <rules.single_field_questions>
+        You MUST NOT ask for more than two fields in a single question.
+        Always ask exactly ONE to maximum TWO emission-related fields per question.
+        But don't complete the category in just one question, ask till all required fields for that
+        category are collected.
+    </rules.single_field_questions>
+
     <category_reference_examples>
         ALWAYS align categories with GHG Protocol scopes.
 
@@ -254,12 +261,6 @@ def build_prompt3A(data: dict) -> str:
             * Use global default EF.
         - MUST state the EF source explicitly (placeholder allowed).
         - Regardless of EF source, ALWAYS convert final emissions to **tCO₂e/year**.
-
-        <!-- EF Stability Rule -->
-        - Always use the most specific emission factor available based on the input context.
-        - If no emission factor is provided in the input, infer the correct factor using the company’s country (from summary or company profile) before falling back to global defaults.
-        - Never change or switch emission factors once selected.
-        - Never mix energy-based and volume-based emission factor pathways in the same calculation.
     </ghg_protocol_core_rules>
 
     <calculation_requirements>
@@ -277,29 +278,41 @@ def build_prompt3A(data: dict) -> str:
             intermediate = annual_value x EF
             result_tonnes = intermediate / 1000
         - raw_emissions must equal result_tonnes within 1e-6 tolerance.
-        - If mismatch occurs, set raw_emissions = null and explain the mismatch in raw_calculation_steps.
+        - If mismatch occurs, set raw_emissions = null and explain the mismatch.
+
+        <!-- ENTITY-LEVEL EMISSIONS ADDITION -->
+        - For each unique entity_id in structured_fields:
+            * calculate an entity-level emission value (entity_emission)
+            * units MUST be tonnes CO₂e/year
+        - The SUM of all entity_emission values MUST exactly equal raw_emissions.
+        - If raw_emissions is null, set all entity_emissions to null.
     </calculation_requirements>
 
     <output_rules>
         - Output MUST be valid JSON only.
         - raw_emissions MUST be:
-            * a float representing **tCO₂e/year**, OR
-            * null if insufficient data.
+            * a float in tonnes CO₂e/year, OR
+            * null
         - raw_calculation_steps must include:
-            * all conversion steps
-            * formulas
-            * emission factor references
+            * all formulas
+            * all unit conversions
+            * all emission factors
             * missing data (if any)
         - scope must be EXACTLY:
             "Scope 1", "Scope 2", or "Scope 3"
-        - No text outside the JSON object.
     </output_rules>
 
     <required_output_format>
         {{
             "scope": "Scope 1 or Scope 2 or Scope 3",
-            "raw_emissions": float or null,  # tonnes CO2e/year
-            "raw_calculation_steps": "string"
+            "raw_emissions": float or null,
+            "raw_calculation_steps": "string",
+            "entity_emissions": [
+                {{
+                    "entity_id": "string",
+                    "emission_tonnes": float or null
+                }}
+            ]
         }}
     </required_output_format>
 
@@ -313,36 +326,99 @@ def build_prompt3A(data: dict) -> str:
 
 def build_prompt3B(data: dict) -> str:
     raw_emissions = data["raw_emissions"]
-    scope = data.get("Scope", "")
     raw_steps = data["raw_steps"]
     structured_fields = data["structured_fields"]
+    scope = data.get("scope", "")
+    company_profile = data.get("company_profile", {})
 
     prompt = f"""
-    <base_persona>
-        You are EcoAgent — an accuracy-first AI specialized in carbon accounting.
-        Always prioritize clarity, schema compliance, and traceable outputs.
-    </base_persona>
+<eco_agent_validation_instruction>
 
-    instructions...
+    <persona>
+        You are EcoAgent Validation Engine — a strict auditor for carbon accounting.
+        Your job is to inspect the LLM's calculation from Prompt 3A and validate:
+        - unit conversions
+        - formula correctness
+        - scope correctness
+        - emission factor use
+        - data completeness
+        - and final tCO₂e output validity
 
-    {raw_emissions}
-    {raw_steps}
-    {structured_fields}
-    {scope}
+        You ALWAYS output strict JSON. No commentary.
+    </persona>
 
-    CHECK:
-    1. Identify any errors in unit conversion.
-    2. Identify missing inputs that harm accuracy.
-    3. Give a confidence score 0-1.
-    4. Provide notes for correction if needed.
+    <input_data>
+        <company_profile>{company_profile}</company_profile>
+        <scope>{scope}</scope>
+        <raw_emissions>{raw_emissions}</raw_emissions>
+        <raw_calculation_steps>{raw_steps}</raw_calculation_steps>
+        <structured_fields>{structured_fields}</structured_fields>
+    </input_data>
 
-    Respond ONLY in this JSON shape:
+    <validation_checks>
 
-    {{
-        "calculation_valid": true/false,
-        "correction_note": "...",
-        "confidence_model": float,
-        "missing_fields": [...],
-    }}
-    """
+        <!-- 1. Unit Conversion Check -->
+        - Verify all unit conversions shown in raw_calculation_steps:
+            * monthly → annual
+            * daily → annual
+            * kg → tonnes
+            * liters → energy or CO₂e (if applicable)
+        - Flag ANY arithmetic mistake.
+
+        <!-- 2. Formula Check -->
+        - Ensure the formula ALWAYS follows:
+            Emissions = Activity Data × Emission Factor
+        - Detect missing multipliers, wrong EF application, or skipped steps.
+
+        <!-- 3. Scope Validation -->
+        - Validate that the provided scope is correct using:
+            * activity type
+            * category type
+            * structured_fields
+        - If wrong → include correction_note explaining correct scope.
+
+        <!-- 4. Country-Specific EF Check -->
+        - Use company_profile["country"] to validate:
+            * correct electricity grid factor
+            * correct diesel/petrol EF
+            * correct regional fallback
+        - If EF source is missing or wrong → note it in correction_note.
+
+        <!-- 5. Missing Data Check -->
+        - Identify any structured_fields that are required but missing for accurate calculation.
+        - missing_fields must be a list of human-readable field names. Only if there are no missing
+          fields only then return missing_fields as empty.
+
+        <!-- 6. raw_emissions Integrity Check -->
+        - Must be in **tonnes CO₂e per year**.
+        - Cross-check numerical consistency between raw_steps and raw_emissions.
+        - If mismatch → calculation_valid = false.
+
+        <!-- 7. Confidence Score -->
+        - confidence_model must be a float from 0 to 1.
+        - Higher score = correct math + correct scope + correct EF + all fields present.
+
+        <!-- 8. Correction Note -->
+        - If ANY error exists → correction_note MUST describe exactly what to fix.
+        - If everything is valid → correction_note must be "" (empty string).
+    </validation_checks>
+
+    <output_format>
+        STRICT JSON ONLY. MATCH THIS EXACT SCHEMA:
+
+        {{
+            "calculation_valid": true or false,
+            "correction_note": "string",
+            "confidence_model": float,
+            "missing_fields": []
+        }}
+    </output_format>
+
+    <final_instruction>
+        Respond ONLY with the JSON object.
+        Do NOT include XML, explanations, or extra text.
+    </final_instruction>
+
+</eco_agent_validation_instruction>
+"""
     return prompt.strip()

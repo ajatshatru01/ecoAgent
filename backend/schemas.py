@@ -29,6 +29,7 @@ class ChatLLMResponse(BaseModel):
     updated_missing_field: Optional[List[Dict[str, Any]]]
     extracted_fields: Optional[List[Dict[str, Any]]]
 
+
 # --- SUMMARY MODELS ---
 class SummaryRequest(BaseModel):
     session_id: str
@@ -44,7 +45,26 @@ class EmissionsRequest(BaseModel):
     category: str
     correction_note: Optional[str] = None
 
+class EntityEmission(BaseModel):
+    entity_id: str
+    emission_tonnes: Optional[float] = None
+
 class EmissionsResponse(BaseModel):
     scope: str
-    raw_emissions: float
+    raw_emissions: Optional[float] = None
     raw_calculation_steps: str
+    entity_emissions: List[EntityEmission]
+
+# ----------------- CONFIDENCE (3B) -----------------
+class ConfidenceRequest(BaseModel):
+    session_id: str
+    category: str
+
+class ConfidenceResponse(BaseModel):
+    scope: str
+    calculation_valid: bool
+    confidence_model: float
+    confidence_data: float
+    confidence_final: float
+    missing_fields: List[Any]
+    correction_note: Optional[str] = None
