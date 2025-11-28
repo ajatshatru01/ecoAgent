@@ -189,6 +189,7 @@ def build_prompt3A(data: dict) -> str:
     category = data["category"]
     structured_fields = data["structured_fields"]
     correction_note = data.get("correction_note", "")
+    company_profile = data.get("company_profile")
 
     prompt = f"""
 <eco_agent_calculation_instruction>
@@ -200,6 +201,7 @@ def build_prompt3A(data: dict) -> str:
     </persona>
 
     <input_context>
+        <company_profile>{company_profile}</company_profile>
         <category>{category}</category>
         <summary>{summary}</summary>
         <structured_fields>{structured_fields}</structured_fields>
