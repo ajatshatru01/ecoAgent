@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PieChart, Pie, Cell, Legend, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, Legend } from "recharts";
 
 export default function ChatPage() {
   const fixedQuestions = [
@@ -11,6 +11,7 @@ export default function ChatPage() {
   ];
 
   const [messages, setMessages] = useState([]);
+  const [initialized, setInitialized] = useState(false);
   const [input, setInput] = useState("");
   const [questionIndex, setQuestionIndex] = useState(0);
   const [isLLMmode, setIsLLMmode] = useState(false);
@@ -34,24 +35,19 @@ export default function ChatPage() {
   ];
 
   const [activeIndex, setActiveIndex] = useState(-1);
+  const onPieEnter = (_, index) => setActiveIndex(index);
+  const onPieLeave = () => setActiveIndex(-1);
 
-  const onPieEnter = (_, index) => {
-    setActiveIndex(index);
-  };
-
-  const onPieLeave = () => {
-    setActiveIndex(-1);
-  };
+  useEffect(() => {
+    if (!initialized) {
+      askNextQuestion();
+      setInitialized(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }
-  }, [messages]);
-
-  useEffect(() => {
-    if (messages.length === 0) {
-      askNextQuestion();
     }
   }, [messages]);
 
@@ -69,7 +65,10 @@ export default function ChatPage() {
 
       const travelEmission = km * 0.21;
       emissionsCO2 += travelEmission;
-      breakdown.push({ label: "Travel Emission", amount: travelEmission.toFixed(2) + " kg" });
+      breakdown.push({
+        label: "Travel Emission",
+        amount: travelEmission.toFixed(2) + " kg"
+      });
     }
 
     if (text.toLowerCase().includes("car")) {
@@ -104,7 +103,10 @@ export default function ChatPage() {
 
   const askNextQuestion = () => {
     if (questionIndex < fixedQuestions.length) {
-      setMessages((prev) => [...prev, { role: "assistant", text: fixedQuestions[questionIndex] }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: fixedQuestions[questionIndex] }
+      ]);
       setQuestionIndex((i) => i + 1);
       return;
     }
@@ -113,7 +115,10 @@ export default function ChatPage() {
 
     setMessages((prev) => [
       ...prev,
-      { role: "assistant", text: "Thanks! Based on your answers, how often do you use public transport?" }
+      {
+        role: "assistant",
+        text: "Thanks! Based on your answers, how often do you use public transport?"
+      }
     ]);
   };
 
@@ -129,29 +134,31 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="w-full h-screen overflow-hidden bg-black text-white px-14 py-10">
+    <div className="w-full min-h-screen bg-black text-white px-6 lg:px-14 py-10 overflow-x-hidden overflow-y-auto">
 
       {/* HEADER */}
-      <header className="w-full flex items-center gap-4 mb-2">
+      <header className="w-full flex items-center gap-4 mb-4">
         <img src="/images/logo.webp" className="w-10 h-10" />
         <h1 className="text-2xl font-bold tracking-tight text-emerald-400">
           EcoAgent <span className="text-[#f59e0b]">Chat</span>
         </h1>
       </header>
 
-      {/* MAIN SECTION */}
-      <div className="flex gap-4 h-[calc(100%-70px)]">
+      {/* MAIN */}
+      <div className="flex flex-col lg:flex-row gap-4 flex-grow lg:h-[calc(100%-70px)] overflow-visible">
 
         {/* CHAT PANEL */}
         <div className="flex-1 bg-white/5 border border-emerald-500/20 rounded-xl p-4 shadow-lg flex flex-col">
-
-          {/* CHAT BOX */}
           <div ref={chatRef} className="flex-1 overflow-y-auto pr-2 space-y-3">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === "user" ? "justify-start" : "justify-end"}`}>
                 <div
-                  className={`max-w-[70%] px-3 py-2 rounded-xl text-sm shadow 
-                  ${msg.role === "user" ? "bg-emerald-400 text-black" : "bg-[#3b82f6]/20 text-blue-200 border border-blue-400/40"}`}
+                  className={`max-w-[75%] px-3 py-2 rounded-xl text-sm shadow 
+                  ${
+                    msg.role === "user"
+                      ? "bg-emerald-400 text-black"
+                      : "bg-[#3b82f6]/20 text-blue-200 border border-blue-400/40"
+                  }`}
                 >
                   {msg.text}
                 </div>
@@ -171,7 +178,7 @@ export default function ChatPage() {
             <button
               onClick={sendMessage}
               className="px-4 py-1.5 bg-emerald-500 text-black font-semibold rounded-lg text-sm shadow 
-              hover:scale-105 active:scale-95 transition-all"
+                hover:scale-105 active:scale-95 transition-all"
             >
               Send
             </button>
@@ -179,7 +186,8 @@ export default function ChatPage() {
         </div>
 
         {/* ANALYTICS PANEL */}
-        <div className="w-[28%] bg-white/5 border border-emerald-500/20 rounded-xl p-4 shadow-lg space-y-4 text-sm">
+        <div className="w-full lg:w-[28%] bg-white/5 border border-emerald-500/20 rounded-xl p-4 shadow-lg 
+                        space-y-4 text-sm max-h-none lg:max-h-full overflow-visible lg:overflow-y-auto">
 
           {/* ENTITIES */}
           <div>
@@ -215,73 +223,120 @@ export default function ChatPage() {
           {/* CATEGORY */}
           <div>
             <h2 className="text-lg font-semibold text-emerald-400 mb-1">Category</h2>
-            <span className={`px-3 py-1 rounded-lg text-black text-xs ${
-              analytics.category === "High Impact"
-                ? "bg-red-400"
-                : analytics.category === "Medium Impact"
-                ? "bg-yellow-400"
-                : "bg-emerald-400"
-            }`}>
+            <span
+              className={`px-3 py-1 rounded-lg text-black text-xs ${
+                analytics.category === "High Impact"
+                  ? "bg-red-400"
+                  : analytics.category === "Medium Impact"
+                  ? "bg-yellow-400"
+                  : "bg-emerald-400"
+              }`}
+            >
               {analytics.category}
             </span>
           </div>
 
           {/* PIE CHART */}
-          <div className="bg-black/40 p-3 rounded-xl border border-white/10">
+          <div className="bg-black/40 p-3 rounded-xl border border-white/10 overflow-visible">
             <h2 className="text-md font-semibold mb-2 text-emerald-400">Breakdown</h2>
 
-            <PieChart width={220} height={220}>
-              <Pie
-                data={pieData}
-                cx="50%"
-                cy="50%"
-                innerRadius={45}
-                outerRadius={85}
-                paddingAngle={3}
-                dataKey="value"
-                activeIndex={activeIndex}
-                activeShape={(props) => (
-                  <g>
-                    <text
-                      x={props.cx}
-                      y={props.cy}
-                      dy={8}
-                      textAnchor="middle"
-                      fill="#fff"
-                      className="text-sm"
-                    >
-                      {props.payload.name}
-                    </text>
-                    <Pie {...props} outerRadius={props.outerRadius + 8} />
-                  </g>
-                )}
-                onMouseEnter={onPieEnter}
-                onMouseLeave={onPieLeave}
-              >
-                {pieData.map((entry, index) => (
-                  <Cell
-                    key={index}
-                    fill={COLORS[index % COLORS.length]}
-                    stroke="#0f172a"
-                    strokeWidth={2}
-                    style={{ filter: "drop-shadow(0 0 4px rgba(255,255,255,0.2))" }}
-                  />
-                ))}
-              </Pie>
+            <div className="relative flex justify-center overflow-visible">
+              <PieChart width={240} height={260} className="overflow-visible">
 
-              <Tooltip
-                contentStyle={{
-                  background: "#0f172a",
-                  border: "1px solid #34d399",
-                  borderRadius: "8px",
-                  color: "white",
-                  fontSize: "12px"
-                }}
-              />
+                <Pie
+                  data={pieData}
+                  cx="50%"
+                  cy="55%"
+                  innerRadius={50}
+                  outerRadius={90}
+                  paddingAngle={3}
+                  dataKey="value"
+                  activeIndex={activeIndex}
+                  onMouseEnter={onPieEnter}
+                  onMouseLeave={onPieLeave}
+                  activeShape={(props) => {
+                    const { cx, cy, midAngle, outerRadius, fill, payload, value } = props;
 
-              <Legend verticalAlign="bottom" iconType="circle" height={32} />
-            </PieChart>
+                    const RAD = Math.PI / 180;
+                    const sin = Math.sin(-midAngle * RAD);
+                    const cos = Math.cos(-midAngle * RAD);
+
+                    const POPUP_W = 90;
+                    const POPUP_H = 40;
+                    const BOX_W = 240;
+                    const BOX_H = 260;
+                    const offset = outerRadius + 20;
+
+                    let popupX = cx + offset * cos;
+                    let popupY = cy + offset * sin;
+
+                    if (sin < -0.5) {
+                      popupX = cx - POPUP_W / 2;
+                      popupY = cy - outerRadius - 55;
+                    } else if (sin > 0.5) {
+                      popupX = cx - POPUP_W / 2;
+                      popupY = cy + outerRadius + 10;
+                    } else if (cos < 0) {
+                      popupX = cx - outerRadius - POPUP_W - 10;
+                      popupY = cy - POPUP_H / 2;
+                    } else {
+                      popupX = cx + outerRadius + 10;
+                      popupY = cy - POPUP_H / 2;
+                    }
+
+                    popupX = Math.max(5, Math.min(popupX, BOX_W - POPUP_W - 5));
+                    popupY = Math.max(5, Math.min(popupY, BOX_H - POPUP_H - 5));
+
+                    return (
+                      <g>
+                        <circle
+                          cx={cx}
+                          cy={cy}
+                          r={outerRadius + 10}
+                          fill="none"
+                          stroke={fill}
+                          strokeWidth="6"
+                          opacity="0.45"
+                          filter="drop-shadow(0 0 8px rgba(255,255,255,0.5))"
+                        />
+
+                        <Pie {...props} outerRadius={outerRadius + 6} fill={fill} />
+
+                        <foreignObject
+                          x={popupX}
+                          y={popupY}
+                          width={POPUP_W}
+                          height={POPUP_H}
+                          className="overflow-visible"
+                        >
+                          <div
+                            className="bg-[#0f172a] text-white px-3 py-1 rounded-lg border border-emerald-400/40 shadow-xl text-xs"
+                            style={{ textAlign: "center", whiteSpace: "nowrap" }}
+                          >
+                            <strong>{payload.name}</strong>
+                            <div>{value}</div>
+                          </div>
+                        </foreignObject>
+                      </g>
+                    );
+                  }}
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell
+                      key={index}
+                      fill={COLORS[index % COLORS.length]}
+                      stroke="#0f172a"
+                      strokeWidth={2}
+                      style={{ filter: "drop-shadow(0 0 4px rgba(255,255,255,0.28))" }}
+                    />
+                  ))}
+                </Pie>
+
+                <Legend verticalAlign="bottom" iconType="circle" height={32} />
+              </PieChart>
+            </div>
           </div>
+
         </div>
 
       </div>
