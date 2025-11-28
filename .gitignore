@@ -1,0 +1,46 @@
+# === BACKEND (Python / FastAPI) ===
+backend/venv/
+__pycache__
+backend/routers/__pycache__/
+backend/init.sql
+backend/*.pyc
+backend/.env
+backend/.env.*
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.DS_Store
+backend/.coverage
+backend/*.log
+
+# === FRONTEND (React + Vite) ===
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.env
+frontend/*.local
+frontend/.DS_Store
+
+# Frontend logs
+frontend/logs/
+frontend/*.log
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/lerna-debug.log*
+
+# === EDITOR / SYSTEM FILES ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# === ENV & Misc ===
+.env
+*.env
+*.log
