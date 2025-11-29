@@ -68,3 +68,25 @@ class ConfidenceResponse(BaseModel):
     confidence_final: float
     missing_fields: List[Any]
     correction_note: Optional[str] = None
+
+class EmissionCategoryResult(BaseModel):
+    category: str
+    raw_emissions: Optional[float]
+
+class EntityEmissionResult(BaseModel):
+    entity_id: str
+    emission_tonnes: Optional[float]
+
+class CategoryDetailedResult(BaseModel):
+    category: str
+    raw_emissions: Optional[float]
+    entities: List[EntityEmissionResult]
+
+class ResultsResponse(BaseModel):
+    total_yearly_emissions: float
+    confidence_weighted_score: float
+    top_categories: List[EmissionCategoryResult]
+    scope1_total: float
+    scope2_total: float
+    scope3_total: float
+    categories_detailed: List[CategoryDetailedResult]
