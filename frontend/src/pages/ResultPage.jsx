@@ -1,68 +1,98 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { PieChart, Pie, Cell, Tooltip } from "recharts";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-// ecoAgent theme colors
 const SCOPE_COLORS = ["#34D399", "#60A5FA", "#A78BFA"]; // green, blue, lavender
 
-export default function ResultPage({
-  totalEmissions = 153.7,
-  confidence = 0.82,
-  scopes = {
-    scope1: 50,
-    scope2: 40,
-    scope3: 63.7,
-  },
-  categories = [
-    {
-      name: "Stationery Fuel Combustion",
-      value: 40,
-      entities: [
-        { name: "Diesel Generator", value: 22 },
-        { name: "Furnace", value: 12 },
-        { name: "Boiler", value: 6 },
-      ],
-    },
-    {
-      name: "Purchased Electricity",
-      value: 32,
-      entities: [{ name: "Grid Electricity", value: 32 }],
-    },
-    {
-      name: "Mobile Combustion",
-      value: 27,
-      entities: [
-        { name: "Company Vehicles", value: 18 },
-        { name: "Delivery Vans", value: 9 },
-      ],
-    },
-    {
-      name: "Waste Disposal",
-      value: 20,
-      entities: [
-        { name: "Office Waste", value: 12 },
-        { name: "Packaging Waste", value: 8 },
-      ],
-    },
-  ],
-}) {
-  const [openCategory, setOpenCategory] = useState(null);
+export default function ResultPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const session_id = searchParams.get("session_id");
 
-  const toggle = (index) =>
-    setOpenCategory(openCategory === index ? null : index);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const scopeData = [
-    { name: "Scope 1 (Direct)", value: scopes.scope1 },
-    { name: "Scope 2 (Energy Indirect)", value: scopes.scope2 },
-    { name: "Scope 3 (Value Chain)", value: scopes.scope3 },
-  ];
+  const [totalEmissions, setTotalEmissions] = useState(0);
+  const [confidence, setConfidence] = useState(0);
+  const [scopeData, setScopeData] = useState([]);
+  const [topCategories, setTopCategories] = useState([]);
+  const [categoriesDetailed, setCategoriesDetailed] = useState([]);
+
+  const [openCategory, setOpenCategory] = useState(null);
+  const toggle = (index) => setOpenCategory(openCategory === index ? null : index);
+
+  useEffect(() => {
+    async function fetchResults() {
+      if (!session_id) {
+        setError("Session ID missing.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/results/${session_id}`
+        );
+
+        if (!res.ok) throw new Error("Failed to fetch results");
+
+        const data = await res.json();
+
+        setTotalEmissions(data.total_yearly_emissions);
+        setConfidence(data.confidence_weighted_score);
+
+        setScopeData([
+          { name: "Scope 1 (Direct)", value: data.scope1_total },
+          { name: "Scope 2 (Energy Indirect)", value: data.scope2_total },
+          { name: "Scope 3 (Value Chain)", value: data.scope3_total },
+        ]);
+
+        setTopCategories(
+          data.top_categories.map((cat) => ({
+            name: cat.category,
+            value: cat.raw_emissions,
+          }))
+        );
+
+        setCategoriesDetailed(
+          data.categories_detailed.map((cat) => ({
+            name: cat.category,
+            value: cat.raw_emissions,
+            entities: cat.entities.map((e) => ({
+              name: e.entity_id,
+              value: e.emission_tonnes,
+            })),
+          }))
+        );
+
+        setLoading(false);
+      } catch (err) {
+        console.error(err);
+        setError("Unable to load results.");
+        setLoading(false);
+      }
+    }
+
+    fetchResults();
+  }, [session_id]);
 
   const totalScope = scopeData.reduce((sum, s) => sum + s.value, 0);
 
-  const topCategories = [...categories]
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 3);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center text-xl">
+        Loading results...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center text-xl text-red-400">
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-black text-white p-6 flex justify-center">
@@ -91,7 +121,7 @@ export default function ResultPage({
         <div className="bg-black/70 border border-white/10 p-6 rounded-xl">
           <p className="text-gray-400 text-lg">Total Yearly Emissions</p>
           <p className="text-4xl font-bold mt-1">
-            {totalEmissions.toFixed(1)}{" "}
+            {totalEmissions.toFixed(2)}{" "}
             <span className="text-green-400">tCO₂e</span>
           </p>
 
@@ -102,21 +132,17 @@ export default function ResultPage({
           </div>
         </div>
 
-        {/* PIE CHART + TOP CATEGORIES */}
+        {/* PIE + TOP CATEGORIES */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-          {/* ---------- FIXED EMISSION SCOPES BLOCK ---------- */}
+          {/* EMISSION SCOPES DONUT */}
           <div className="bg-black/70 border border-white/10 p-6 rounded-xl overflow-hidden">
 
             <p className="text-lg font-semibold mb-6">Emission Scopes</p>
 
-            {/* Layout: chart left, legend right */}
-            <div className="flex flex-col md:flex-row items-center md:items-start justify-center gap-10">
+            <div className="flex flex-col md:flex-row items-center justify-center gap-10">
 
-              {/* DONUT CHART */}
               <div className="relative flex items-center justify-center">
-
-                {/* Smaller glow that stays inside */}
                 <div
                   className="absolute h-[220px] w-[220px] rounded-full animate-pulse-slow opacity-30"
                   style={{
@@ -126,7 +152,6 @@ export default function ResultPage({
                 ></div>
 
                 <PieChart width={240} height={240} className="overflow-visible">
-
                   <Pie
                     data={scopeData}
                     cx="50%"
@@ -135,13 +160,14 @@ export default function ResultPage({
                     outerRadius={95}
                     paddingAngle={3}
                     dataKey="value"
-                    animationDuration={1200}
                     label={({ value, cx, cy, midAngle, outerRadius }) => {
                       const RADIAN = Math.PI / 180;
-                      const radius = outerRadius - 20; // keep labels inside bounds
-                      const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                      const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
+                      const x =
+                        cx +
+                        (outerRadius - 20) * Math.cos(-midAngle * RADIAN);
+                      const y =
+                        cy +
+                        (outerRadius - 20) * Math.sin(-midAngle * RADIAN);
                       return (
                         <text
                           x={x}
@@ -167,7 +193,6 @@ export default function ResultPage({
                     ))}
                   </Pie>
 
-                  {/* FIXED TOOLTIPS */}
                   <Tooltip
                     contentStyle={{
                       backgroundColor: "#0f172a",
@@ -179,16 +204,12 @@ export default function ResultPage({
                     itemStyle={{ color: "white" }}
                     labelStyle={{ color: "#34D399", fontWeight: "bold" }}
                   />
-
                 </PieChart>
               </div>
 
-              {/* RIGHT LEGEND (contained & spaced) */}
-              <div className="flex flex-col gap-5 w-full md:w-auto">
-
+              <div className="flex flex-col gap-5">
                 {scopeData.map((item, idx) => (
                   <div key={idx} className="flex items-start gap-3">
-
                     <span
                       className="h-4 w-4 block rounded-md shadow-md"
                       style={{ background: SCOPE_COLORS[idx] }}
@@ -197,19 +218,16 @@ export default function ResultPage({
                     <div className="leading-tight">
                       <p className="text-white font-semibold">{item.name}</p>
                       <p className="text-gray-400 text-sm">
-                        {item.value.toFixed(1)} tCO₂e (
+                        {item.value.toFixed(2)} tCO₂e (
                         {Math.round((item.value / totalScope) * 100)}%)
                       </p>
                     </div>
-
                   </div>
                 ))}
-
               </div>
 
             </div>
 
-            {/* Pulse Animation */}
             <style>
               {`
                 @keyframes pulse-slow {
@@ -224,7 +242,6 @@ export default function ResultPage({
             </style>
 
           </div>
-          {/* ---------- END FIXED EMISSION SCOPES BLOCK ---------- */}
 
           {/* TOP CATEGORIES */}
           <div className="bg-black/70 border border-white/10 p-6 rounded-xl">
@@ -237,10 +254,10 @@ export default function ResultPage({
                   <div
                     className="h-full bg-green-400 transition-all duration-700"
                     style={{ width: `${(cat.value / totalEmissions) * 100}%` }}
-                  ></div>
+                  />
                 </div>
                 <span className="text-sm text-gray-400 mt-1">
-                  {cat.value} tCO₂e
+                  {cat.value.toFixed(2)} tCO₂e
                 </span>
               </div>
             ))}
@@ -253,16 +270,15 @@ export default function ResultPage({
           <p className="text-xl font-semibold mb-6">Emission Categories</p>
 
           <div className="space-y-4">
-            {categories.map((cat, index) => (
+            {categoriesDetailed.map((cat, index) => (
               <div key={index}>
-
                 <button
                   onClick={() => toggle(index)}
                   className="w-full flex justify-between items-center bg-white/10 hover:bg-white/20 p-4 rounded-xl transition"
                 >
                   <span className="text-lg">{cat.name}</span>
                   <span className="text-green-400 font-semibold">
-                    {cat.value} tCO₂e
+                    {cat.value.toFixed(2)} tCO₂e
                   </span>
                 </button>
 
@@ -276,7 +292,9 @@ export default function ResultPage({
                   {cat.entities.map((ent, i) => (
                     <div key={i} className="flex justify-between pr-2 py-1">
                       <p className="text-gray-300">• {ent.name}</p>
-                      <p className="text-green-400">{ent.value} tCO₂e</p>
+                      <p className="text-green-400">
+                        {ent.value.toFixed(3)} tCO₂e
+                      </p>
                     </div>
                   ))}
                 </div>
