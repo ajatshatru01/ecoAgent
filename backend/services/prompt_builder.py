@@ -152,9 +152,9 @@ def build_prompt2(data: dict) -> str:
         - Coverage must stay complete across all topics touched.
 
         STYLE RULES:
-        - Rewrite the whole summary into a shorter, simpler, high-level form.
+        - Rewrite only that part of the summary which you are going to add into the previous_summary
+        into a shorter, simpler, high-level form.
         - Use compact phrasing while still preserving every fact.
-        - No detailed numbers unless essential.
         - Avoid speculation.
     </goal>
 
